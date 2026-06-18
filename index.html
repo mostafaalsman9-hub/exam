@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>منصة الامتحانات</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
+  <style>
+    /* ── Setup Wizard overlay ── */
+    #setup-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: linear-gradient(135deg,#4f46e5,#7c3aed);
+      z-index: 99999;
+      overflow-y: auto;
+      padding: 20px;
+    }
+    #setup-overlay.show { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .setup-card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 36px 32px;
+      width: 100%; max-width: 620px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+    }
+    .setup-header { text-align:center; margin-bottom:28px; }
+    .setup-header .emoji { font-size:3rem; display:block; margin-bottom:8px; }
+    .setup-header h1 { font-size:1.6rem; color:#1e293b; margin-bottom:4px; }
+    .setup-header p { color:#64748b; font-size:.9rem; }
+
+    .setup-tabs { display:flex; gap:6px; margin-bottom:20px; }
+    .setup-tab {
+      flex:1; padding:10px; border:2px solid #e2e8f0;
+      border-radius:10px; text-align:center; cursor:pointer;
+      font-weight:600; font-size:.85rem; color:#64748b;
+      transition: all .2s;
+    }
+    .setup-tab.active { border-color:#4f46e5; background:#eff6ff; color:#4f46e5; }
+
+    .setup-panel { display:none; }
+    .setup-panel.active { display:block; }
+
+    .setup-field { margin-bottom:14px; }
+    .setup-field label { display:block; font-weight:700; font-size:.85rem; color:#374151; margin-bottom:5px; }
+    .setup-field input {
+      width:100%; padding:10px 14px;
+      border:1.5px solid #e2e8f0; border-radius:8px;
+      font-size:.9rem; font-family:'Consolas',monospace;
+      direction:ltr; text-align:left;
+      transition: border-color .2s;
+    }
+    .setup-field input:focus { outline:none; border-color:#4f46e5; box-shadow:0 0 0 3px rgba(79,70,229,.12); }
+
+    .setup-paste-area {
+      width:100%; min-height:150px; padding:12px 14px;
+      border:1.5px solid #e2e8f0; border-radius:8px;
+      font-size:.82rem; font-family:'Consolas',monospace;
+      direction:ltr; text-align:left; resize:vertical;
+      transition: border-color .2s;
+    }
+    .setup-paste-area:focus { outline:none; border-color:#4f46e5; box-shadow:0 0 0 3px rgba(79,70,229,.12); }
+
+    .setup-hint {
+      background:#f8fafc; border:1px solid #e2e8f0;
+      border-radius:8px; padding:12px; font-size:.82rem;
+      color:#475569; margin-bottom:16px; line-height:1.7;
+    }
+    .setup-hint code { background:#e0e7ff; color:#3730a3; padding:1px 5px; border-radius:3px; }
+
+    .setup-alert { padding:10px 14px; border-radius:8px; margin-top:10px; font-size:.9rem; display:none; }
+    .setup-alert.error   { background:#fee2e2; color:#991b1b; display:block; }
+    .setup-alert.success { background:#dcfce7; color:#166534; display:block; }
+
+    .setup-btn {
+      width:100%; padding:14px; border:none; border-radius:10px;
+      font-size:1rem; font-weight:700; font-family:inherit; cursor:pointer;
+      background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff;
+      margin-top:16px; transition: all .2s;
+    }
+    .setup-btn:hover { opacity:.92; transform:translateY(-1px); }
+
+    .setup-or { text-align:center; color:#94a3b8; font-size:.82rem; margin:12px 0; }
+    .setup-reset-link { color:#dc2626; font-size:.8rem; cursor:pointer; text-decoration:underline; }
+  </style>
+</head>
+<body>
+
+<!-- ══ SETUP WIZARD ══════════════════════════════════════ -->
+<div id="setup-overlay">
+  <div class="setup-card">
+    <div class="setup-header">
+      <span class="emoji">🔧</span>
+      <h1>إعداد منصة الامتحانات</h1>
+      <p>مرة واحدة فقط — ثم يعمل الموقع تلقائياً</p>
+    </div>
+    <div class="setup-tabs">
+      <div class="setup-tab active" onclick="switchSetupTab('paste')">📋 لصق الكود</div>
+      <div class="setup-tab" onclick="switchSetupTab('manual')">✏️ إدخال يدوي</div>
+    </div>
+    <div id="tab-paste" class="setup-panel active">
+      <div class="setup-hint">
+        <strong>الخطوات:</strong><br>
+        1. افتح <strong>console.firebase.google.com</strong> وأنشئ مشروعاً جديداً<br>
+        2. اضغط <strong>"إضافة تطبيق" ← أيقونة الويب &lt;/&gt;</strong><br>
+        3. انسخ كامل كود <code>firebaseConfig</code> وألصقه هنا:
+      </div>
+      <textarea class="setup-paste-area" id="paste-snippet"
+        placeholder='const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  authDomain: "my-project.firebaseapp.com",
+  projectId: "my-project",
+  storageBucket: "my-project.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456:web:abc123"
+};'></textarea>
+    </div>
+    <div id="tab-manual" class="setup-panel">
+      <div class="setup-field"><label>API Key</label><input type="text" id="m-apiKey" placeholder="AIzaSy..."></div>
+      <div class="setup-field"><label>Auth Domain</label><input type="text" id="m-authDomain" placeholder="your-project.firebaseapp.com"></div>
+      <div class="setup-field"><label>Project ID</label><input type="text" id="m-projectId" placeholder="your-project-id"></div>
+      <div class="setup-field"><label>Storage Bucket</label><input type="text" id="m-storageBucket" placeholder="your-project.appspot.com"></div>
+      <div class="setup-field"><label>Messaging Sender ID</label><input type="text" id="m-messagingSenderId" placeholder="123456789"></div>
+      <div class="setup-field"><label>App ID</label><input type="text" id="m-appId" placeholder="1:123456:web:abc123"></div>
+    </div>
+    <div id="setup-alert" class="setup-alert"></div>
+    <button class="setup-btn" onclick="saveSetup()">✅ حفظ وتشغيل المنصة</button>
+    <p class="setup-or">تم الإعداد مسبقاً؟ <span class="setup-reset-link" onclick="resetSetup()">إعادة الإعداد</span></p>
+  </div>
+</div>
+
+<!-- Hidden admin trigger -->
+<button id="admin-trigger" title=""></button>
+
+<!-- Fixed timer bar -->
+<div id="timer-bar" class="hidden" style="display:flex">
+  <span id="timer-exam-name">الامتحان</span>
+  <span id="timer-display">00:00</span>
+</div>
+
+<!-- ══ VIEW: Loading ══════════════════════════════════════ -->
+<div id="view-loading" class="view active">
+  <div class="loader" style="min-height:100vh">
+    <div class="spinner"></div>
+    <span>جاري التحميل...</span>
+  </div>
+</div>
+
+<!-- ══ VIEW: Home ════════════════════════════════════════ -->
+<div id="view-home" class="view">
+  <div class="container-sm" style="padding-top:80px">
+    <div class="page-header">
+      <div class="logo"><div class="logo-icon">📝</div></div>
+      <h1>منصة الامتحانات</h1>
+      <p class="subtitle">أدخل رابط الامتحان الذي أرسله إليك المشرف</p>
+    </div>
+    <div class="card text-center">
+      <p class="text-muted">يرجى استخدام الرابط المخصص للامتحان الذي حصلت عليه من الأستاذ.</p>
+      <p class="text-small text-muted mt-8">مثال: <code>index.html?exam=XXXX</code></p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW: Not found ══════════════════════════════════ -->
+<div id="view-not-found" class="view">
+  <div class="container-sm" style="padding-top:80px;text-align:center">
+    <div style="font-size:4rem;margin-bottom:16px">🔍</div>
+    <h2>الامتحان غير موجود</h2>
+    <p class="text-muted">تأكد من صحة الرابط.</p>
+  </div>
+</div>
+
+<!-- ══ VIEW: Time over ════════════════════════════════════ -->
+<div id="view-time-over" class="view">
+  <div class="container-sm" style="padding-top:80px;text-align:center">
+    <div style="font-size:4rem;margin-bottom:16px">⌛</div>
+    <h2>انتهى وقت الامتحان</h2>
+    <p class="text-muted">عذراً، لقد انتهى وقت تقديم هذا الامتحان.</p>
+  </div>
+</div>
+
+<!-- ══ VIEW: Already submitted ════════════════════════════ -->
+<div id="view-already-submitted" class="view">
+  <div class="container-sm" style="padding-top:80px;text-align:center">
+    <div style="font-size:4rem;margin-bottom:16px">✅</div>
+    <h2>تم تسليم الامتحان مسبقاً</h2>
+    <p class="text-muted">لقد قدّمت هذا الامتحان من قبل. لا يمكن التقديم مرة أخرى.</p>
+  </div>
+</div>
+
+<!-- ══ VIEW: Error ════════════════════════════════════════ -->
+<div id="view-error" class="view">
+  <div class="container-sm" style="padding-top:80px;text-align:center">
+    <div style="font-size:4rem;margin-bottom:16px">⚠️</div>
+    <h2>خطأ في التحميل</h2>
+    <p class="text-muted">تأكد من اتصالك بالإنترنت وأعد المحاولة.</p>
+    <div id="error-detail" style="margin:16px auto;max-width:400px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;font-size:.9rem;text-align:right;display:none"></div>
+    <button class="btn btn-primary mt-20" onclick="location.reload()">إعادة المحاولة</button>
+  </div>
+</div>
+
+<!-- ══ VIEW: Waiting room ════════════════════════════════ -->
+<div id="view-waiting" class="view">
+  <div class="container-sm" style="padding-top:60px">
+    <div class="card waiting-screen">
+      <div style="font-size:2.5rem;margin-bottom:8px">⏳</div>
+      <h2>لم يبدأ الامتحان بعد</h2>
+      <p class="text-muted">سيبدأ في الساعة: <strong id="wait-start-time">—</strong></p>
+      <div class="waiting-clock" id="wait-countdown">00:00:00</div>
+      <p class="text-muted text-small">ستنتقل تلقائياً عند بدء الامتحان. لا تغلق الصفحة.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW: Student info (login) ════════════════════════ -->
+<div id="view-student-info" class="view">
+  <div class="container-sm" style="padding-top:40px">
+    <div class="page-header" style="padding-top:20px">
+      <div class="logo"><div class="logo-icon">📝</div></div>
+      <h1 id="exam-title-info">الامتحان</h1>
+      <p class="subtitle" id="exam-subject-info"></p>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="stats-row" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:0">
+        <div class="stat-box"><div class="stat-val" id="exam-qcount-info">—</div><div class="stat-lbl">سؤال</div></div>
+        <div class="stat-box"><div class="stat-val" id="exam-duration-info">—</div><div class="stat-lbl">المدة</div></div>
+        <div class="stat-box"><div class="stat-val">1x</div><div class="stat-lbl">محاولة</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="student-alert" class="alert alert-error hidden"></div>
+
+      <!-- Open exam: name + grade + section (IDs أصلية لا تتغير) -->
+      <div id="login-open">
+        <h3>بيانات الطالب</h3>
+        <div class="form-group">
+          <label for="student-name">الاسم الكامل</label>
+          <input type="text" id="student-name" placeholder="أدخل اسمك الكامل">
+        </div>
+        <div class="input-row">
+          <div class="form-group">
+            <label for="student-grade">الفرقة</label>
+            <select id="student-grade">
+              <option value="">اختر الفرقة</option>
+              <option value="الفرقة الأولى">الفرقة الأولى</option>
+              <option value="الفرقة الثانية">الفرقة الثانية</option>
+              <option value="الفرقة الثالثة">الفرقة الثالثة</option>
+              <option value="الفرقة الرابعة">الفرقة الرابعة</option>
+              <option value="الفرقة الخامسة">الفرقة الخامسة</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="student-section">الشعبة</label>
+            <input type="text" id="student-section" placeholder="مثال: A أو 1">
+          </div>
+        </div>
+        <div class="alert alert-info" style="margin-bottom:16px">
+          ⚠️ بعد الضغط على بدء لن تتمكن من الرجوع. تأكد من بياناتك.
+        </div>
+        <button class="btn btn-primary btn-lg btn-full" onclick="startExam()">
+          🚀 بدء الامتحان
+        </button>
+      </div>
+
+      <!-- Restricted exam: username + password -->
+      <div id="login-restricted" class="hidden">
+        <h3>🔐 تسجيل الدخول للامتحان</h3>
+        <div class="form-group">
+          <label for="student-username">اسم المستخدم</label>
+          <input type="text" id="student-username" placeholder="أدخل اسم المستخدم" autocomplete="username" dir="ltr">
+        </div>
+        <div class="form-group">
+          <label for="student-password">كلمة المرور</label>
+          <input type="password" id="student-password" placeholder="••••••••" autocomplete="current-password" dir="ltr">
+        </div>
+        <div class="alert alert-info" style="margin-bottom:16px">
+          ⚠️ بعد الضغط على بدء لن تتمكن من الرجوع. تأكد من بياناتك.
+        </div>
+        <button class="btn btn-primary btn-lg btn-full" onclick="startExam()">
+          🚀 بدء الامتحان
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW: Exam ════════════════════════════════════════ -->
+<div id="view-exam" class="view">
+  <div class="container" style="padding-top:64px">
+    <div class="card" style="margin-bottom:24px;padding:16px 20px">
+      <div class="flex-between">
+        <div>
+          <strong id="exam-view-title">الامتحان</strong>
+          <span class="text-muted text-small" id="exam-view-subject" style="margin-right:10px"></span>
+        </div>
+        <span class="badge badge-primary" id="exam-view-qcount"></span>
+      </div>
+    </div>
+    <div id="exam-alert" class="alert alert-error hidden"></div>
+    <div id="exam-questions-container"></div>
+    <div class="card text-center" style="margin-top:24px">
+      <p class="text-muted mb-12">تأكد من مراجعة إجاباتك قبل التسليم</p>
+      <button id="submit-btn" class="btn btn-success btn-lg" onclick="confirmSubmit()">✅ تسليم الامتحان</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW: Submitted ════════════════════════════════════ -->
+<div id="view-submitted" class="view">
+  <div class="container-sm" style="padding-top:60px">
+    <div class="card success-screen">
+      <div class="success-icon">🎉</div>
+      <h1>تم التسليم!</h1>
+      <p class="text-muted mt-8">شكراً <strong id="result-name"></strong></p>
+
+      <div id="result-score-row" class="mt-20">
+        <p class="text-muted" id="result-score-label">درجتك في الأسئلة الموضوعية:</p>
+        <div class="score-display" id="result-score">—</div>
+      </div>
+      <div class="mt-12"><span id="result-status" class="badge"></span></div>
+
+      <!-- يظهر فقط إذا في مقالي -->
+      <div id="essay-pending-notice" class="alert alert-info hidden" style="margin-top:20px;text-align:right">
+        ✏️ الأسئلة المقالية لم تُصحَّح بعد. ستظهر درجتها ونموذج الإجابة بعد مراجعة المدرس.
+      </div>
+
+      <p class="text-muted text-small mt-20">يمكنك إغلاق هذه الصفحة الآن.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW: Admin Login ══════════════════════════════════ -->
+<div id="view-admin-login" class="view">
+  <div class="container-sm" style="padding-top:80px">
+    <div class="card">
+      <div class="text-center mb-20">
+        <div class="logo-icon" style="margin:0 auto 12px;width:52px;height:52px">🔐</div>
+        <h2>دخول المشرف</h2>
+      </div>
+      <div id="login-alert" class="alert alert-error hidden"></div>
+      <div class="form-group">
+        <label for="login-email">البريد الإلكتروني</label>
+        <input type="email" id="login-email" placeholder="admin@example.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="login-pass">كلمة المرور</label>
+        <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button id="login-btn" class="btn btn-primary btn-full btn-lg mt-8" onclick="adminLogin()">دخول</button>
+      <button class="btn btn-ghost btn-full mt-8" onclick="show('view-home')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW: Admin Dashboard ══════════════════════════════ -->
+<div id="view-admin" class="view">
+
+  <nav class="admin-nav">
+    <div class="admin-nav-brand">📝 لوحة التحكم</div>
+    <div id="tab-exams"   class="nav-link active" onclick="showAdminTab('tab-exams');loadAdminExams()">الامتحانات</div>
+    <div id="tab-create"  class="nav-link"        onclick="showCreateExam()">+ إنشاء امتحان</div>
+    <div id="tab-results" class="nav-link"        onclick="showAdminTab('tab-results')">النتائج</div>
+    <div id="tab-essay"   class="nav-link hidden"  onclick="showAdminTab('tab-essay')">✏️ تصحيح مقالي</div>
+    <div class="nav-link" onclick="adminLogout()" style="color:var(--danger);margin-right:auto">خروج</div>
+  </nav>
+
+  <!-- Exams list -->
+  <div id="tab-exams-view" class="admin-subview active">
+    <div class="container" style="padding-top:32px">
+      <div class="flex-between mb-20">
+        <h2>الامتحانات</h2>
+        <button class="btn btn-primary" onclick="showCreateExam()">+ إنشاء امتحان</button>
+      </div>
+      <div id="exams-list"></div>
+    </div>
+  </div>
+
+  <!-- Create exam -->
+  <div id="tab-create-view" class="admin-subview">
+    <div class="container" style="padding-top:32px;max-width:720px">
+      <h2>إنشاء امتحان جديد</h2>
+      <div class="step-indicator">
+        <div class="step-dot active"></div>
+        <div class="step-dot"></div>
+        <div class="step-dot"></div>
+      </div>
+
+      <!-- Step 1 -->
+      <div id="ce-step1" class="exam-step active">
+        <div class="card">
+          <h3>معلومات الامتحان</h3>
+          <div id="ce-alert1" class="alert alert-error hidden"></div>
+          <div class="input-row">
+            <div class="form-group">
+              <label>عنوان الامتحان</label>
+              <input type="text" id="ce-title" placeholder="مثال: امتحان نهاية الفصل">
+            </div>
+            <div class="form-group">
+              <label>اسم المادة</label>
+              <input type="text" id="ce-subject" placeholder="مثال: الرياضيات">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="form-group">
+              <label>الفرقة المستهدفة</label>
+              <select id="ce-grade">
+                <option value="">الكل</option>
+                <option value="الفرقة الأولى">الفرقة الأولى</option>
+                <option value="الفرقة الثانية">الفرقة الثانية</option>
+                <option value="الفرقة الثالثة">الفرقة الثالثة</option>
+                <option value="الفرقة الرابعة">الفرقة الرابعة</option>
+                <option value="الفرقة الخامسة">الفرقة الخامسة</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>مدة الامتحان (دقيقة)</label>
+              <input type="number" id="ce-duration" value="60" min="5" step="5">
+            </div>
+          </div>
+
+          <!-- ══ NEW: من يدخل الامتحان؟ ══ -->
+          <div class="form-group">
+            <label>من يمكنه دخول الامتحان؟</label>
+            <div class="hint" style="margin-bottom:10px">اختر طريقة وصول الطلاب للامتحان</div>
+            <div class="access-type-grid">
+              <div class="access-type-card selected" id="at-open" onclick="selectAccessType('open')">
+                <div class="ac-icon">🌐</div>
+                <div class="ac-title">للجميع</div>
+                <div class="ac-desc">أي شخص لديه الرابط يدخل بكتابة اسمه فقط — بدون باسورد</div>
+              </div>
+              <div class="access-type-card" id="at-restricted" onclick="selectAccessType('restricted')">
+                <div class="ac-icon">🔒</div>
+                <div class="ac-title">طلاب مخصصين</div>
+                <div class="ac-desc">فقط الطلاب الذين تضيف بياناتهم يدخلون بـ username وباسورد</div>
+              </div>
+            </div>
+            <input type="hidden" id="ce-access-type" value="open">
+          </div>
+
+          <!-- عدد الأسئلة -->
+          <div class="form-group">
+            <label>عدد الأسئلة لكل نوع</label>
+            <div class="hint" style="margin-bottom:10px">اتركها صفراً لاستبعاد هذا النوع من الامتحان</div>
+            <div class="qtype-grid">
+              <div class="qtype-box">
+                <label>اختياري (MCQ)</label>
+                <input type="number" id="ce-qcount-mcq" value="10" min="0" max="100">
+                <div class="qtype-hint">خيارات متعددة</div>
+              </div>
+              <div class="qtype-box">
+                <label>صح / خطأ</label>
+                <input type="number" id="ce-qcount-tf" value="0" min="0" max="100">
+                <div class="qtype-hint">إجابة ثنائية</div>
+              </div>
+              <div class="qtype-box">
+                <label>مقالي</label>
+                <input type="number" id="ce-qcount-essay" value="0" min="0" max="100">
+                <div class="qtype-hint">إجابة حرة — يصحح يدوياً</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>وقت بدء الامتحان (اختياري)</label>
+            <input type="datetime-local" id="ce-start">
+            <div class="hint">اتركه فارغاً إذا أردت أن يبدأ فوراً</div>
+          </div>
+          <div class="flex-between mt-20">
+            <span></span>
+            <button class="btn btn-primary" onclick="nextStep()">التالي ←</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div id="ce-step2" class="exam-step">
+        <div id="ce-alert2" class="alert alert-error hidden"></div>
+        <div id="questions-builder"></div>
+        <div class="flex-between mt-12">
+          <button class="btn btn-outline" onclick="prevStep()">→ السابق</button>
+          <button class="btn btn-primary" onclick="nextStep()">مراجعة ونشر ←</button>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div id="ce-step3" class="exam-step">
+        <div class="card">
+          <h3 id="ce-step3-title">مراجعة الامتحان</h3>
+
+          <!-- ملخص -->
+          <div class="stats-row" style="grid-template-columns:repeat(2,1fr)">
+            <div class="stat-box"><div class="stat-val" id="preview-qcount">—</div><div class="stat-lbl">سؤال</div></div>
+            <div class="stat-box"><div class="stat-val" id="preview-total">—</div><div class="stat-lbl">إجمالي الدرجات</div></div>
+          </div>
+          <div class="card-sm mt-8">
+            <div><strong>العنوان:</strong> <span id="preview-title"></span></div>
+            <div><strong>المادة:</strong> <span id="preview-subject"></span></div>
+            <div class="mt-4"><strong>توزيع الأسئلة:</strong> <span id="preview-types" style="color:var(--primary);font-weight:600"></span></div>
+            <div class="mt-4"><strong>نوع الوصول:</strong> <span id="preview-access" style="color:var(--primary);font-weight:600"></span></div>
+          </div>
+
+          <!-- قسم بيانات الطلاب — يظهر فقط للامتحان المخصص -->
+          <div id="students-section" class="hidden">
+            <hr class="divider">
+            <h3>🔒 بيانات دخول الطلاب</h3>
+            <p class="text-muted text-small" style="margin-bottom:14px">أضف اسم المستخدم وكلمة المرور لكل طالب.</p>
+            <div id="students-list"></div>
+            <button class="btn btn-outline btn-sm mt-8" onclick="addStudentRow()">+ إضافة طالب</button>
+          </div>
+
+          <div id="ce-alert3" class="alert alert-error hidden"></div>
+          <div class="flex-between mt-20">
+            <button class="btn btn-outline" onclick="prevStep()">→ تعديل الأسئلة</button>
+            <button id="publish-btn" class="btn btn-success" onclick="publishExam()">🚀 نشر الامتحان</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="tab-results-view" class="admin-subview">
+    <div class="container" style="padding-top:32px">
+      <div class="flex-between mb-12">
+        <div>
+          <h2>النتائج</h2>
+          <p class="text-muted text-small" id="responses-exam-title"></p>
+        </div>
+        <div class="btn-group">
+          <select id="sort-select" class="btn btn-outline btn-sm"
+            onchange="loadResponses(currentExamForResponses)"
+            style="font-family:inherit;font-weight:600;cursor:pointer">
+            <option value="name">ترتيب بالاسم</option>
+            <option value="grade">ترتيب بالفرقة</option>
+            <option value="section">ترتيب بالشعبة</option>
+            <option value="score">ترتيب بالدرجة</option>
+          </select>
+          <button id="export-btn" class="btn btn-success btn-sm hidden" onclick="exportExcel()">📥 تصدير Excel</button>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-box"><div class="stat-val" id="stat-total">—</div><div class="stat-lbl">إجمالي</div></div>
+        <div class="stat-box"><div class="stat-val" id="stat-submitted">—</div><div class="stat-lbl">في الوقت</div></div>
+        <div class="stat-box"><div class="stat-val" id="stat-avg">—</div><div class="stat-lbl">متوسط الدرجات</div></div>
+      </div>
+      <div id="responses-container"></div>
+    </div>
+  </div>
+
+  <!-- Essay grading -->
+  <div id="tab-essay-view" class="admin-subview">
+    <div class="container" style="padding-top:32px;max-width:720px">
+      <h2>✏️ تصحيح الأسئلة المقالية</h2>
+      <div id="essay-grading-container"></div>
+    </div>
+  </div>
+
+</div><!-- END view-admin -->
+
+<script src="firebase.js"></script>
+<script src="app.js"></script>
+
+<script>
+/* ══════════════════════════════════════════════════════════
+   ميزات إضافية — مغلفة بـ IIFE لتجنب أي تعارض مع app.js
+   ══════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  /* ── متغير صفوف الطلاب معزول تماماً ── */
+  var _epStudentRows = [{ name:'', seatNumber:'', username:'', password:'' }];
+
+  /* ── اختيار نوع الوصول ── */
+  window.selectAccessType = function(type) {
+    document.getElementById('ce-access-type').value = type;
+    document.getElementById('at-open').classList.toggle('selected', type === 'open');
+    document.getElementById('at-restricted').classList.toggle('selected', type === 'restricted');
+  };
+
+  /* ── رسم صفوف الطلاب ── */
+  window.renderStudentRows = function() {
+    var list = document.getElementById('students-list');
+    if (!list) return;
+    list.innerHTML = _epStudentRows.map(function(s, i) {
+      return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center">'
+        + '<input style="padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem;font-family:inherit;width:100%" placeholder="الاسم" value="' + s.name + '" oninput="updateStudentRow(' + i + ',\'name\',this.value)">'
+        + '<input style="padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem;direction:ltr;width:100%" placeholder="رقم الجلوس" value="' + s.seatNumber + '" oninput="updateStudentRow(' + i + ',\'seatNumber\',this.value)">'
+        + '<input style="padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem;direction:ltr;width:100%" placeholder="اسم المستخدم" value="' + s.username + '" oninput="updateStudentRow(' + i + ',\'username\',this.value)">'
+        + '<input style="padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:.9rem;direction:ltr;width:100%" placeholder="كلمة المرور" value="' + s.password + '" oninput="updateStudentRow(' + i + ',\'password\',this.value)">'
+        + '<button onclick="removeStudentRow(' + i + ')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1.1rem;padding:4px">✕</button>'
+        + '</div>';
+    }).join('');
+  };
+
+  window.updateStudentRow = function(i, field, val) {
+    _epStudentRows[i][field] = val;
+  };
+
+  window.addStudentRow = function() {
+    _epStudentRows.push({ name:'', seatNumber:'', username:'', password:'' });
+    window.renderStudentRows();
+  };
+
+  window.removeStudentRow = function(i) {
+    _epStudentRows.splice(i, 1);
+    if (!_epStudentRows.length) _epStudentRows.push({ name:'', seatNumber:'', username:'', password:'' });
+    window.renderStudentRows();
+  };
+
+  /* ── الحصول على بيانات الطلاب عند النشر ── */
+  window.getEpStudentRows = function() { return _epStudentRows; };
+
+  /* ── تحضير الخطوة 3 (تُستدعى من nextStep في app.js لو أُضيفت) ── */
+  window.prepareStep3 = function() {
+    var type  = document.getElementById('ce-access-type').value;
+    var sec   = document.getElementById('students-section');
+    var title = document.getElementById('ce-step3-title');
+    var pacc  = document.getElementById('preview-access');
+    if (!sec) return;
+    if (type === 'restricted') {
+      sec.classList.remove('hidden');
+      if (title) title.textContent = '🔒 بيانات الطلاب ومراجعة الامتحان';
+      _epStudentRows = [{ name:'', seatNumber:'', username:'', password:'' }];
+      window.renderStudentRows();
+    } else {
+      sec.classList.add('hidden');
+      if (title) title.textContent = '🌐 مراجعة ونشر';
+    }
+    if (pacc) pacc.textContent = type === 'open' ? '🌐 مفتوح للجميع' : '🔒 طلاب مخصصين';
+  };
+
+  /* ── إظهار إشعار انتظار تصحيح المقالي ── */
+  window.showEssayPending = function() {
+    var el = document.getElementById('essay-pending-notice');
+    var lbl = document.getElementById('result-score-label');
+    if (el) el.classList.remove('hidden');
+    if (lbl) lbl.textContent = 'درجتك في الأسئلة الموضوعية:';
+  };
+
+  /* ── إظهار قسم تسجيل الدخول المناسب بناءً على نوع الامتحان ── */
+  window.showStudentLoginMode = function(accessType) {
+    var openEl = document.getElementById('login-open');
+    var restEl = document.getElementById('login-restricted');
+    if (!openEl || !restEl) return;
+    if (accessType === 'restricted') {
+      openEl.classList.add('hidden');
+      restEl.classList.remove('hidden');
+    } else {
+      openEl.classList.remove('hidden');
+      restEl.classList.add('hidden');
+    }
+  };
+
+})();
+</script>
+
+</body>
+</html>
